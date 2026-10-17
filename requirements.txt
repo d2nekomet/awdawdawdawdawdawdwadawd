@@ -1,0 +1,7 @@
+aiogram>=3.31,<4
+httpx>=0.28,<1
+python-dotenv>=1.0,<2
+yt-dlp>=2025.1.0
+qrcode[pil]>=8.0
+Pillow>=11.0
+pytest>=8.0
