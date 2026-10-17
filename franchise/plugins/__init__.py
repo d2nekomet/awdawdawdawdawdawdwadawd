@@ -2,6 +2,7 @@ from .base import PluginContext, PluginSpec, Services
 from . import (
     channel_admin,
     channel_stats,
+    crypto_alerts,
     currency,
     drive,
     images,
@@ -33,6 +34,7 @@ _MODULES = (
     text_tools,
     currency,
     links,
+    crypto_alerts,
 )
 
 PLUGINS: dict[str, PluginSpec] = {m.SPEC.name: m.SPEC for m in _MODULES}

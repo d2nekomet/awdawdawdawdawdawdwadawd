@@ -23,6 +23,7 @@ from franchise.plugins.scheduler import parse as parse_schedule
 from franchise.plugins.text_tools import _slug
 from franchise.plugins.tiktok import URL_RE as TIKTOK_RE
 from franchise.plugins.qr import _render as render_qr
+from franchise.plugins.crypto_alerts import fetch_prices, fmt_price, is_triggered, parse_alert
 
 ADMIN = 7161045475
 
@@ -258,10 +259,58 @@ def test_image_compression_produces_jpeg():
     assert max(w, h) <= 1600
 
 
+# crypto alerts
+
+def test_alert_parsing_accepts_english_and_russian():
+    assert parse_alert("btc above 70000") == ("bitcoin", "above", 70000.0)
+    assert parse_alert("ETH ниже 3 000,5") == ("ethereum", "below", 3000.5)
+    assert parse_alert("sol выше 150") == ("solana", "above", 150.0)
+
+
+@pytest.mark.parametrize("bad", ["btc above", "btc above -5", "btc up 100", "btc above abc", ""])
+def test_alert_parsing_rejects_bad_input(bad):
+    assert parse_alert(bad) is None
+
+
+def test_trigger_directions():
+    assert is_triggered("above", 100, 100)
+    assert not is_triggered("above", 100, 99.9)
+    assert is_triggered("below", 100, 99)
+    assert not is_triggered("below", 100, 101)
+
+
+def test_price_formatting():
+    assert fmt_price(70123.456) == "70 123.46"
+    assert fmt_price(0.0000123) == "0.000012"
+
+
+def test_fetch_prices_queries_coingecko_once_for_many_coins():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["ids"] = request.url.params["ids"]
+        return httpx.Response(200, json={"bitcoin": {"usd": 1.0}, "ethereum": {"usd": 2.0}})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    data = asyncio.run(fetch_prices(http, ["ethereum", "bitcoin", "bitcoin"]))
+    assert seen["ids"] == "bitcoin,ethereum"
+    assert data["ethereum"]["usd"] == 2.0
+
+
+def test_alert_storage_is_per_chat(db, tmp_path):
+    services = Services(make_settings(tmp_path), db, DriveClient("", "", httpx.AsyncClient()), httpx.AsyncClient())
+    ctx = PluginContext(services, ADMIN, "crypto_alerts")
+    ctx.set("alerts", [
+        {"id": "a", "chat_id": 1, "coin": "bitcoin", "symbol": "BTC", "op": "above", "target": 1.0},
+        {"id": "b", "chat_id": 2, "coin": "bitcoin", "symbol": "BTC", "op": "below", "target": 1.0},
+    ])
+    assert [a["id"] for a in ctx.get("alerts") if a["chat_id"] == 1] == ["a"]
+
+
 # plugin registry and wiring
 
-def test_fifteen_plugins_registered():
-    assert len(PLUGINS) == 15
+def test_sixteen_plugins_registered():
+    assert len(PLUGINS) == 16
     for name, spec in PLUGINS.items():
         assert spec.name == name
         assert spec.title and spec.icon and spec.description
